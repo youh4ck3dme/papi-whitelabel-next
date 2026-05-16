@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 4444",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --incremental false",
     "test:e2e": "playwright test",
     "test:security": "playwright test e2e/security.api.spec.ts --project=chromium",
     "verify": "npm run lint && npm run typecheck && npm run build"

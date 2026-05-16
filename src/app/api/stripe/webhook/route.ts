@@ -1,50 +1,64 @@
-import { stripe } from '@/lib/stripe';
-import { prisma } from '@/lib/prisma';
-import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { prisma } from '@/lib/prisma';
+import { stripe } from '@/lib/stripe';
+import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 
 export async function POST(request: Request) {
-  const body = await request.text();
-  const signature = request.headers.get('stripe-signature') as string;
-
-  let event: Stripe.Event;
-
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    );
-  } catch (err) {
-    console.error('Stripe Webhook Error:', err);
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
-  }
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      return errorResponse(503, 'CONFIG_ERROR', 'STRIPE_WEBHOOK_SECRET is not configured');
+    }
 
-  // Handle the event
-  switch (event.type) {
-    case 'customer.subscription.created':
-    case 'customer.subscription.updated':
-      await handleSubscriptionUpdate(event.data.object as Stripe.Subscription);
-      break;
-    case 'customer.subscription.deleted':
-      await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
-      break;
-    case 'payment_intent.succeeded':
-      await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
-      break;
-    case 'payment_intent.payment_failed':
-      await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
-      break;
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
+    const body = await request.text();
+    const signature = request.headers.get('stripe-signature');
+    if (!signature) {
+      return errorResponse(400, 'INVALID_REQUEST', 'Missing stripe-signature header');
+    }
 
-  return NextResponse.json({ received: true });
+    let event: Stripe.Event;
+
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    } catch {
+      return errorResponse(400, 'INVALID_REQUEST', 'Invalid Stripe webhook signature');
+    }
+
+    switch (event.type) {
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdate(event.data.object as Stripe.Subscription);
+        break;
+      case 'customer.subscription.deleted':
+        await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        break;
+      case 'payment_intent.succeeded':
+        await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
+        break;
+      case 'payment_intent.payment_failed':
+        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
+        break;
+      default:
+        console.log(`Unhandled event type ${event.type}`);
+    }
+
+    return Response.json({ received: true });
+  } catch (error) {
+    return unknownErrorResponse(error);
+  }
 }
 
-async function handleSubscriptionUpdate(subscription: any) {
+function getSubscriptionPeriodEnd(subscription: Stripe.Subscription) {
+  const firstItem = subscription.items.data[0];
+  const periodEndUnix = firstItem?.current_period_end ?? (subscription.created + 30 * 24 * 60 * 60);
+  return new Date(periodEndUnix * 1000);
+}
+
+async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   const tenantId = subscription.metadata.tenantId;
   if (!tenantId) return;
+
+  const currentPeriodEnd = getSubscriptionPeriodEnd(subscription);
 
   await prisma.subscription.upsert({
     where: { stripeId: subscription.id },
@@ -53,11 +67,11 @@ async function handleSubscriptionUpdate(subscription: any) {
       tenantId,
       plan: 'STARTER',
       status: 'ACTIVE',
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      currentPeriodEnd,
     },
     update: {
       status: 'ACTIVE',
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+      currentPeriodEnd,
     },
   });
 }

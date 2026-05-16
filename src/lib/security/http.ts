@@ -35,7 +35,12 @@ export function errorResponse(
 }
 
 export function unknownErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : 'Unexpected error';
+  const isProd = process.env.NODE_ENV === 'production';
+  const safeMessage = isProd ? 'Internal server error' : error instanceof Error ? error.message : 'Unexpected error';
 
-  return errorResponse(500, 'INTERNAL_ERROR', message);
+  if (!isProd) {
+    return errorResponse(500, 'INTERNAL_ERROR', safeMessage);
+  }
+
+  return errorResponse(500, 'INTERNAL_ERROR', safeMessage);
 }
