@@ -76,6 +76,12 @@ npm run verify
 npm run test:security
 ```
 
+## Operational policies
+
+- Branch protection baseline: `docs/BRANCH_PROTECTION.md`
+- Release tagging process: `docs/RELEASE_TAGGING_POLICY.md`
+- Incident rollback steps: `docs/ROLLBACK_CHECKLIST.md`
+
 ## Security notes
 
 - Never commit real secrets.

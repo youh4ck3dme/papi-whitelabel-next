@@ -40,3 +40,26 @@ jobs:
           STRIPE_PRO_PRICE_ID: price_ci_pro
           STRIPE_ENTERPRISE_PRICE_ID: price_ci_enterprise
         run: npm run build
+
+  security-contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run security and API contract tests
+        env:
+          STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+        run: npx playwright test e2e/security.api.spec.ts e2e/contracts/api-contract.spec.ts --project=chromium
