@@ -4,14 +4,25 @@ import { getStripeClient } from '@/lib/stripe';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 import { claimWebhookEventId } from '@/lib/security/webhook-idempotency';
 import { requireStripeWebhookSecret } from '@/lib/security/config';
+import { getRequestId } from '@/lib/security/request-context';
+import { logAuditEvent } from '@/lib/security/audit-log';
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
+
   try {
     const webhookSecret = requireStripeWebhookSecret();
 
     const body = await request.text();
     const signature = request.headers.get('stripe-signature');
     if (!signature) {
+      logAuditEvent({
+        action: 'stripe.webhook.process',
+        outcome: 'DENY',
+        requestId,
+        actorId: 'system:webhook',
+        reason: 'missing_signature',
+      });
       return errorResponse(400, 'INVALID_REQUEST', 'Missing stripe-signature header');
     }
 
@@ -21,11 +32,30 @@ export async function POST(request: Request) {
       const stripe = getStripeClient();
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch {
+      logAuditEvent({
+        action: 'stripe.webhook.process',
+        outcome: 'DENY',
+        requestId,
+        actorId: 'system:webhook',
+        reason: 'invalid_signature',
+      });
       return errorResponse(400, 'INVALID_REQUEST', 'Invalid Stripe webhook signature');
     }
 
+    const tenantIdFromMetadata = getTenantIdFromEvent(event);
+
     const claim = claimWebhookEventId(event.id);
     if (!claim.firstSeen) {
+      logAuditEvent({
+        action: 'stripe.webhook.process',
+        outcome: 'SUCCESS',
+        requestId,
+        actorId: 'system:webhook',
+        tenantId: tenantIdFromMetadata,
+        targetType: 'stripe_event',
+        targetId: event.id,
+        reason: 'duplicate_ignored',
+      });
       return Response.json({ received: true, duplicate: true });
     }
 
@@ -47,10 +77,32 @@ export async function POST(request: Request) {
         console.log(`Unhandled event type ${event.type}`);
     }
 
+    logAuditEvent({
+      action: 'stripe.webhook.process',
+      outcome: 'SUCCESS',
+      requestId,
+      actorId: 'system:webhook',
+      tenantId: tenantIdFromMetadata,
+      targetType: 'stripe_event',
+      targetId: event.id,
+    });
+
     return Response.json({ received: true });
   } catch (error) {
+    logAuditEvent({
+      action: 'stripe.webhook.process',
+      outcome: 'ERROR',
+      requestId,
+      actorId: 'system:webhook',
+      reason: 'unhandled_exception',
+    });
     return unknownErrorResponse(error);
   }
+}
+
+function getTenantIdFromEvent(event: Stripe.Event) {
+  const objectWithMetadata = event.data.object as { metadata?: Record<string, string> };
+  return objectWithMetadata?.metadata?.tenantId;
 }
 
 function getSubscriptionPeriodEnd(subscription: Stripe.Subscription) {

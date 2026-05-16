@@ -3,13 +3,24 @@ import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/notifications';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 import { requireCronSecret } from '@/lib/security/config';
+import { getRequestId } from '@/lib/security/request-context';
+import { logAuditEvent } from '@/lib/security/audit-log';
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request);
+
   try {
     const cronSecret = requireCronSecret();
 
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${cronSecret}`) {
+      logAuditEvent({
+        action: 'cron.reminder.run',
+        outcome: 'DENY',
+        requestId,
+        actorId: 'system:cron',
+        reason: 'invalid_cron_secret',
+      });
       return errorResponse(401, 'UNAUTHORIZED', 'Unauthorized');
     }
 
@@ -42,10 +53,36 @@ export async function GET(request: Request) {
         message,
         'both'
       );
+
+      logAuditEvent({
+        action: 'cron.reminder.notification',
+        outcome: 'SUCCESS',
+        requestId,
+        actorId: 'system:cron',
+        tenantId: booking.tenantId,
+        targetType: 'booking',
+        targetId: booking.id,
+      });
     }
+
+    logAuditEvent({
+      action: 'cron.reminder.run',
+      outcome: 'SUCCESS',
+      requestId,
+      actorId: 'system:cron',
+      targetType: 'booking_batch',
+      targetId: String(bookings.length),
+    });
 
     return NextResponse.json({ processed: bookings.length });
   } catch (error) {
+    logAuditEvent({
+      action: 'cron.reminder.run',
+      outcome: 'ERROR',
+      requestId,
+      actorId: 'system:cron',
+      reason: 'unhandled_exception',
+    });
     return unknownErrorResponse(error);
   }
 }

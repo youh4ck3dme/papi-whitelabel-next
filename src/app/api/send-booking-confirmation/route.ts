@@ -6,14 +6,44 @@ import { requireAuth, requireRole } from '@/lib/security/auth';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { parseJsonBody, requireString } from '@/lib/security/validation';
+import { getRequestId } from '@/lib/security/request-context';
+import { logAuditEvent } from '@/lib/security/audit-log';
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
+  let actorId: string | undefined;
+  let actorRole: string | undefined;
+  let tenantIdForAudit: string | undefined;
+
   try {
     const auth = await requireAuth(request);
-    if (!auth.ok) return auth.response;
+    if (!auth.ok) {
+      logAuditEvent({
+        action: 'booking.confirmation.send',
+        outcome: 'DENY',
+        requestId,
+        reason: 'unauthenticated',
+      });
+      return auth.response;
+    }
+
+    actorId = auth.context.userId;
+    actorRole = auth.context.role;
+    tenantIdForAudit = auth.context.tenantId;
 
     const roleCheck = requireRole(auth.context, ['owner', 'admin', 'staff']);
-    if (!roleCheck.ok) return roleCheck.response;
+    if (!roleCheck.ok) {
+      logAuditEvent({
+        action: 'booking.confirmation.send',
+        outcome: 'DENY',
+        requestId,
+        actorId,
+        actorRole,
+        tenantId: tenantIdForAudit,
+        reason: 'role_forbidden',
+      });
+      return roleCheck.response;
+    }
 
     const rateLimit = enforceRateLimit({
       request,
@@ -22,7 +52,18 @@ export async function POST(request: Request) {
       limit: 30,
       windowMs: 60_000,
     });
-    if (!rateLimit.ok) return rateLimit.response;
+    if (!rateLimit.ok) {
+      logAuditEvent({
+        action: 'booking.confirmation.send',
+        outcome: 'DENY',
+        requestId,
+        actorId,
+        actorRole,
+        tenantId: tenantIdForAudit,
+        reason: 'rate_limited',
+      });
+      return rateLimit.response;
+    }
 
     const parsedBody = await parseJsonBody(request);
     if (!parsedBody.ok) return parsedBody.response;
@@ -44,6 +85,17 @@ export async function POST(request: Request) {
     }
 
     if (booking.tenantId !== auth.context.tenantId) {
+      logAuditEvent({
+        action: 'booking.confirmation.send',
+        outcome: 'DENY',
+        requestId,
+        actorId,
+        actorRole,
+        tenantId: tenantIdForAudit,
+        targetType: 'booking',
+        targetId: booking.id,
+        reason: 'tenant_mismatch',
+      });
       return errorResponse(403, 'FORBIDDEN', 'Booking tenant does not match authenticated tenant');
     }
 
@@ -65,8 +117,28 @@ export async function POST(request: Request) {
       time: booking.startTime,
     });
 
+    logAuditEvent({
+      action: 'booking.confirmation.send',
+      outcome: 'SUCCESS',
+      requestId,
+      actorId,
+      actorRole,
+      tenantId: booking.tenantId,
+      targetType: 'booking',
+      targetId: booking.id,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
+    logAuditEvent({
+      action: 'booking.confirmation.send',
+      outcome: 'ERROR',
+      requestId,
+      actorId,
+      actorRole,
+      tenantId: tenantIdForAudit,
+      reason: 'unhandled_exception',
+    });
     return unknownErrorResponse(error);
   }
 }

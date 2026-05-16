@@ -7,16 +7,46 @@ import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { optionalString, parseJsonBody, requireEnum, requireString } from '@/lib/security/validation';
 import { requireNextAuthUrl, requireStripePriceId } from '@/lib/security/config';
+import { getRequestId } from '@/lib/security/request-context';
+import { logAuditEvent } from '@/lib/security/audit-log';
 
 const PLAN_VALUES = ['STARTER', 'PRO', 'ENTERPRISE'] as const;
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
+  let actorId: string | undefined;
+  let actorRole: string | undefined;
+  let tenantIdForAudit: string | undefined;
+
   try {
     const auth = await requireAuth(request);
-    if (!auth.ok) return auth.response;
+    if (!auth.ok) {
+      logAuditEvent({
+        action: 'subscription.create',
+        outcome: 'DENY',
+        requestId,
+        reason: 'unauthenticated',
+      });
+      return auth.response;
+    }
+
+    actorId = auth.context.userId;
+    actorRole = auth.context.role;
+    tenantIdForAudit = auth.context.tenantId;
 
     const roleCheck = requireRole(auth.context, ['owner', 'admin']);
-    if (!roleCheck.ok) return roleCheck.response;
+    if (!roleCheck.ok) {
+      logAuditEvent({
+        action: 'subscription.create',
+        outcome: 'DENY',
+        requestId,
+        actorId,
+        actorRole,
+        tenantId: tenantIdForAudit,
+        reason: 'role_forbidden',
+      });
+      return roleCheck.response;
+    }
 
     const rateLimit = enforceRateLimit({
       request,
@@ -25,7 +55,18 @@ export async function POST(request: Request) {
       limit: 10,
       windowMs: 60_000,
     });
-    if (!rateLimit.ok) return rateLimit.response;
+    if (!rateLimit.ok) {
+      logAuditEvent({
+        action: 'subscription.create',
+        outcome: 'DENY',
+        requestId,
+        actorId,
+        actorRole,
+        tenantId: tenantIdForAudit,
+        reason: 'rate_limited',
+      });
+      return rateLimit.response;
+    }
 
     const parsedBody = await parseJsonBody(request);
     if (!parsedBody.ok) return parsedBody.response;
@@ -34,7 +75,18 @@ export async function POST(request: Request) {
     if (!tenantIdInput.ok) return tenantIdInput.response;
 
     const tenantCheck = enforceTenantContext(tenantIdInput.data, auth.context);
-    if (!tenantCheck.ok) return tenantCheck.response;
+    if (!tenantCheck.ok) {
+      logAuditEvent({
+        action: 'subscription.create',
+        outcome: 'DENY',
+        requestId,
+        actorId,
+        actorRole,
+        tenantId: tenantIdForAudit,
+        reason: 'tenant_mismatch',
+      });
+      return tenantCheck.response;
+    }
 
     const plan = requireEnum(parsedBody.data.plan, 'plan', PLAN_VALUES);
     if (!plan.ok) return plan.response;
@@ -83,8 +135,28 @@ export async function POST(request: Request) {
       metadata: { tenantId, plan: plan.data },
     });
 
+    logAuditEvent({
+      action: 'subscription.create',
+      outcome: 'SUCCESS',
+      requestId,
+      actorId,
+      actorRole,
+      tenantId,
+      targetType: 'subscription_checkout_session',
+      targetId: session.id,
+    });
+
     return NextResponse.json({ url: session.url });
   } catch (error) {
+    logAuditEvent({
+      action: 'subscription.create',
+      outcome: 'ERROR',
+      requestId,
+      actorId,
+      actorRole,
+      tenantId: tenantIdForAudit,
+      reason: 'unhandled_exception',
+    });
     return unknownErrorResponse(error);
   }
 }
