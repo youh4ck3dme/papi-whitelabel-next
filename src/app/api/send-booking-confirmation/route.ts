@@ -8,6 +8,7 @@ import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { parseJsonBody, requireString } from '@/lib/security/validation';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
+import { requireDatabaseUrl } from '@/lib/security/config';
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
@@ -70,6 +71,8 @@ export async function POST(request: Request) {
 
     const bookingId = requireString(parsedBody.data.bookingId, 'bookingId');
     if (!bookingId.ok) return bookingId.response;
+
+    requireDatabaseUrl();
 
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId.data },

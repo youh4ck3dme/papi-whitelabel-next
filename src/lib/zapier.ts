@@ -1,7 +1,9 @@
-export const sendToZapier = async (event: string, data: any) => {
+import { logSafe } from '@/lib/security/logging';
+
+export const sendToZapier = async (event: string, data: unknown) => {
   const webhookUrl = process.env.ZAPIER_WEBHOOK_URL;
   if (!webhookUrl) {
-    console.warn('Zapier Webhook URL not configured, skipping');
+    logSafe('info', 'Zapier webhook not configured, event skipped', { event });
     return null;
   }
 
@@ -19,12 +21,20 @@ export const sendToZapier = async (event: string, data: any) => {
     });
 
     if (!response.ok) {
-      throw new Error('Zapier Webhook Failed');
+      logSafe('warn', 'Zapier webhook failed with non-OK status', {
+        event,
+        status: response.status,
+      });
+      return null;
     }
 
     return response.json();
   } catch (error) {
-    console.error('Zapier Error:', error);
-    throw new Error('Failed to send to Zapier');
+    // Optional integration: do not break the main booking flow.
+    logSafe('warn', 'Zapier webhook call failed, event skipped', {
+      event,
+      error: String(error),
+    });
+    return null;
   }
 };

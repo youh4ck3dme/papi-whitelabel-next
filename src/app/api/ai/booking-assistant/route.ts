@@ -6,6 +6,7 @@ import { unknownErrorResponse, errorResponse } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { optionalString, parseJsonBody, requireIsoDate, requireString } from '@/lib/security/validation';
+import { requireDatabaseUrl } from '@/lib/security/config';
 
 export async function POST(request: Request) {
   try {
@@ -38,6 +39,8 @@ export async function POST(request: Request) {
 
     const date = requireIsoDate(parsedBody.data.date, 'date');
     if (!date.ok) return date.response;
+
+    requireDatabaseUrl();
 
     const nextDay = new Date(date.data);
     nextDay.setDate(nextDay.getDate() + 1);

@@ -6,7 +6,7 @@ import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { optionalString, parseJsonBody, requireEnum, requireString } from '@/lib/security/validation';
-import { requireNextAuthUrl, requireStripePriceId } from '@/lib/security/config';
+import { requireDatabaseUrl, requireNextAuthUrl, requireStripePriceId } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
 
@@ -98,6 +98,7 @@ export async function POST(request: Request) {
     if (!email.ok) return email.response;
 
     const tenantId = tenantCheck.tenantId;
+    requireDatabaseUrl();
 
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },

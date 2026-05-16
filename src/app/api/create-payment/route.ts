@@ -9,6 +9,7 @@ import { optionalString, parseJsonBody, requireEnum, requireNumber, requireStrin
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
+import { requireDatabaseUrl } from '@/lib/security/config';
 
 const SUPPORTED_PAYMENT_METHODS = ['CARD', 'CRYPTO'] as const;
 
@@ -105,6 +106,8 @@ export async function POST(request: Request) {
     if (!method.ok) return method.response;
 
     const tenantId = tenantCheck.tenantId;
+
+    requireDatabaseUrl();
 
     const payment = await prisma.payment.create({
       data: {

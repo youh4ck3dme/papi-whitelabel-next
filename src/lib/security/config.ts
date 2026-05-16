@@ -48,3 +48,7 @@ export function requireStripePriceId(plan: 'STARTER' | 'PRO' | 'ENTERPRISE') {
 
   return readEnv(map[plan]);
 }
+
+export function requireDatabaseUrl() {
+  return readEnv('DATABASE_URL');
+}

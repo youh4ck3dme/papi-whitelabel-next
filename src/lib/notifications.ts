@@ -1,10 +1,11 @@
 import { sendSMS } from './twilio';
+import { logSafe } from '@/lib/security/logging';
 
 type NotificationType = 'sms' | 'email' | 'both';
 
-// Stub pre email service (napr. Resend alebo SendGrid)
 export const sendEmail = async (to: string, subject: string, body: string) => {
-  console.log(`Email sent to ${to}: [${subject}] ${body}`);
+  // Stub for future provider integration.
+  logSafe('info', 'Email send simulated', { to, subject, body });
   return true;
 };
 
@@ -15,18 +16,23 @@ export const sendNotification = async (
   message: string,
   type: NotificationType = 'both'
 ) => {
-  const results = [];
+  const results: Promise<unknown>[] = [];
 
-  if (type === 'sms' || type === 'both') {
-    if (userPhone) {
-      results.push(sendSMS(userPhone, message).catch(e => console.error('SMS Failed', e)));
-    }
+  if ((type === 'sms' || type === 'both') && userPhone) {
+    results.push(sendSMS(userPhone, message));
   }
 
-  if (type === 'email' || type === 'both') {
-    if (userEmail) {
-      results.push(sendEmail(userEmail, 'Booking Notification', message).catch(e => console.error('Email Failed', e)));
-    }
+  if ((type === 'email' || type === 'both') && userEmail) {
+    results.push(
+      sendEmail(userEmail, 'Booking Notification', message).catch((error) => {
+        logSafe('warn', 'Email send failed, notification skipped', {
+          tenantId,
+          userEmail,
+          error: String(error),
+        });
+        return null;
+      })
+    );
   }
 
   await Promise.all(results);

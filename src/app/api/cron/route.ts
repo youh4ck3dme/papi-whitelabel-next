@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/notifications';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
-import { requireCronSecret } from '@/lib/security/config';
+import { requireCronSecret, requireDatabaseUrl } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
 
@@ -23,6 +23,8 @@ export async function GET(request: Request) {
       });
       return errorResponse(401, 'UNAUTHORIZED', 'Unauthorized');
     }
+
+    requireDatabaseUrl();
 
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
