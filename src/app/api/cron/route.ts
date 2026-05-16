@@ -2,13 +2,11 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/notifications';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { requireCronSecret } from '@/lib/security/config';
 
 export async function GET(request: Request) {
   try {
-    const cronSecret = process.env.CRON_SECRET;
-    if (!cronSecret) {
-      return errorResponse(503, 'CONFIG_ERROR', 'CRON_SECRET must be configured');
-    }
+    const cronSecret = requireCronSecret();
 
     const authHeader = request.headers.get('authorization');
     if (authHeader !== `Bearer ${cronSecret}`) {

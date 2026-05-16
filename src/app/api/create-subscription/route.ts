@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { stripe } from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { optionalString, parseJsonBody, requireEnum, requireString } from '@/lib/security/validation';
+import { requireNextAuthUrl, requireStripePriceId } from '@/lib/security/config';
 
 const PLAN_VALUES = ['STARTER', 'PRO', 'ENTERPRISE'] as const;
 
@@ -56,6 +57,7 @@ export async function POST(request: Request) {
 
     let customerId = tenant.stripeCustomerId;
     if (!customerId) {
+      const stripe = getStripeClient();
       const customer = await stripe.customers.create({
         email: email.data,
         metadata: { tenantId },
@@ -67,22 +69,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const priceByPlan = {
-      STARTER: process.env.STRIPE_STARTER_PRICE_ID,
-      PRO: process.env.STRIPE_PRO_PRICE_ID,
-      ENTERPRISE: process.env.STRIPE_ENTERPRISE_PRICE_ID,
-    } as const;
+    const priceId = requireStripePriceId(plan.data);
+    const baseUrl = requireNextAuthUrl();
 
-    const priceId = priceByPlan[plan.data];
-    if (!priceId) {
-      return errorResponse(503, 'CONFIG_ERROR', `Missing Stripe price id for ${plan.data}`);
-    }
-
-    const baseUrl = process.env.NEXTAUTH_URL;
-    if (!baseUrl) {
-      return errorResponse(503, 'CONFIG_ERROR', 'NEXTAUTH_URL is required for checkout redirects');
-    }
-
+    const stripe = getStripeClient();
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],

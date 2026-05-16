@@ -1,15 +1,13 @@
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
-import { stripe } from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
 import { claimWebhookEventId } from '@/lib/security/webhook-idempotency';
+import { requireStripeWebhookSecret } from '@/lib/security/config';
 
 export async function POST(request: Request) {
   try {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret) {
-      return errorResponse(503, 'CONFIG_ERROR', 'STRIPE_WEBHOOK_SECRET is not configured');
-    }
+    const webhookSecret = requireStripeWebhookSecret();
 
     const body = await request.text();
     const signature = request.headers.get('stripe-signature');
@@ -20,6 +18,7 @@ export async function POST(request: Request) {
     let event: Stripe.Event;
 
     try {
+      const stripe = getStripeClient();
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch {
       return errorResponse(400, 'INVALID_REQUEST', 'Invalid Stripe webhook signature');

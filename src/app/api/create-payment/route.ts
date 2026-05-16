@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { nowPayments } from '@/lib/nowpayments';
-import { stripe } from '@/lib/stripe';
+import { getStripeClient } from '@/lib/stripe';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
-import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { unknownErrorResponse } from '@/lib/security/http';
 import { optionalString, parseJsonBody, requireEnum, requireNumber, requireString } from '@/lib/security/validation';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 
@@ -70,6 +70,7 @@ export async function POST(request: Request) {
         where: { id: tenantId },
       });
 
+      const stripe = getStripeClient();
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount.data * 100),
         currency: currency.data.toLowerCase(),

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test:e2e": "playwright test",
     "test:security": "playwright test e2e/security.api.spec.ts --project=chromium",
-    "verify": "npm run lint && npm run typecheck && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm run build",
+    "audit:deps": "npm audit --audit-level=high",
+    "audit:deps:json": "npm audit --json"
   },
   "dependencies": {
     "@langchain/core": "^1.1.42",
@@ -21,7 +23,7 @@
     "axios": "^1.15.2",
     "dotenv": "^17.4.2",
     "langchain": "^1.3.5",
-    "next": "^15.1.4",
+    "next": "^15.5.18",
     "next-pwa": "^5.6.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -34,7 +36,7 @@
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "eslint": "^9.17.0",
-    "eslint-config-next": "^15.1.4",
+    "eslint-config-next": "^15.5.18",
     "prisma": "^5.22.0",
     "typescript": "^5.7.2"
   },

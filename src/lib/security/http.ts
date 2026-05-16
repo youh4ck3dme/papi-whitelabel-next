@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { ConfigError } from './config';
 
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
@@ -35,12 +36,16 @@ export function errorResponse(
 }
 
 export function unknownErrorResponse(error: unknown) {
-  const isProd = process.env.NODE_ENV === 'production';
-  const safeMessage = isProd ? 'Internal server error' : error instanceof Error ? error.message : 'Unexpected error';
-
-  if (!isProd) {
-    return errorResponse(500, 'INTERNAL_ERROR', safeMessage);
+  if (error instanceof ConfigError) {
+    return errorResponse(503, 'CONFIG_ERROR', error.message);
   }
+
+  const isProd = process.env.NODE_ENV === 'production';
+  const safeMessage = isProd
+    ? 'Internal server error'
+    : error instanceof Error
+      ? error.message
+      : 'Unexpected error';
 
   return errorResponse(500, 'INTERNAL_ERROR', safeMessage);
 }
