@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import Stripe from 'stripe';
 
 test.describe('API Security Guards', () => {
   test('returns 401 for mutating endpoints without auth', async ({ request }) => {
@@ -126,10 +127,55 @@ test.describe('API Security Guards', () => {
       },
     });
 
-    expect([400, 503]).toContain(response.status());
+    expect(response.status()).toBe(400);
 
     const body = await response.json();
     expect(body.error).toBeDefined();
     expect(typeof body.error.code).toBe('string');
+  });
+
+  test('marks duplicate stripe webhook event as duplicate', async ({ request }) => {
+    const secret = 'whsec_test_local';
+
+    const payloadObject = {
+      id: 'evt_test_duplicate_guard',
+      object: 'event',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_test_duplicate_guard',
+          object: 'payment_intent',
+          metadata: {},
+        },
+      },
+    };
+
+    const payload = JSON.stringify(payloadObject);
+    const signature = Stripe.webhooks.generateTestHeaderString({ payload, secret });
+
+    const firstResponse = await request.post('/api/stripe/webhook', {
+      data: payload,
+      headers: {
+        'content-type': 'application/json',
+        'stripe-signature': signature,
+      },
+    });
+
+    expect(firstResponse.status()).toBe(200);
+    const firstBody = await firstResponse.json();
+    expect(firstBody.received).toBeTruthy();
+
+    const secondResponse = await request.post('/api/stripe/webhook', {
+      data: payload,
+      headers: {
+        'content-type': 'application/json',
+        'stripe-signature': signature,
+      },
+    });
+
+    expect(secondResponse.status()).toBe(200);
+    const secondBody = await secondResponse.json();
+    expect(secondBody.received).toBeTruthy();
+    expect(secondBody.duplicate).toBeTruthy();
   });
 });

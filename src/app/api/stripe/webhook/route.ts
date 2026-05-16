@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { stripe } from '@/lib/stripe';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { claimWebhookEventId } from '@/lib/security/webhook-idempotency';
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +23,11 @@ export async function POST(request: Request) {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch {
       return errorResponse(400, 'INVALID_REQUEST', 'Invalid Stripe webhook signature');
+    }
+
+    const claim = claimWebhookEventId(event.id);
+    if (!claim.firstSeen) {
+      return Response.json({ received: true, duplicate: true });
     }
 
     switch (event.type) {
@@ -77,7 +83,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-  await prisma.subscription.delete({
+  await prisma.subscription.deleteMany({
     where: { stripeId: subscription.id },
   });
 }
@@ -87,8 +93,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   const bookingId = paymentIntent.metadata.bookingId;
 
   if (paymentId) {
-    await prisma.payment.update({
-      where: { id: paymentId },
+    await prisma.payment.updateMany({
+      where: {
+        id: paymentId,
+        NOT: { status: 'COMPLETED' },
+      },
       data: {
         status: 'COMPLETED',
         transactionId: paymentIntent.id,
@@ -97,8 +106,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   }
 
   if (bookingId) {
-    await prisma.booking.update({
-      where: { id: bookingId },
+    await prisma.booking.updateMany({
+      where: {
+        id: bookingId,
+        NOT: { status: 'CONFIRMED' },
+      },
       data: { status: 'CONFIRMED' },
     });
   }
@@ -107,8 +119,11 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
   const paymentId = paymentIntent.metadata.paymentId;
   if (paymentId) {
-    await prisma.payment.update({
-      where: { id: paymentId },
+    await prisma.payment.updateMany({
+      where: {
+        id: paymentId,
+        NOT: { status: 'COMPLETED' },
+      },
       data: { status: 'FAILED' },
     });
   }

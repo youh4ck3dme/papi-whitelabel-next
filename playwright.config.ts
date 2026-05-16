@@ -29,7 +29,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'STRIPE_WEBHOOK_SECRET=whsec_test_local npm run dev',
     url: baseURL,
     reuseExistingServer: !process.env.CI,
   },
