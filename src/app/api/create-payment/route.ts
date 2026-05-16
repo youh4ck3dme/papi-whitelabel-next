@@ -5,6 +5,7 @@ import { getStripeClient } from '@/lib/stripe';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { unknownErrorResponse } from '@/lib/security/http';
+import { withRequestTimeout } from '@/lib/security/timeout';
 import { optionalString, parseJsonBody, requireEnum, requireNumber, requireString } from '@/lib/security/validation';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { getRequestId } from '@/lib/security/request-context';
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
   let tenantIdForAudit: string | undefined;
 
   try {
+    return await withRequestTimeout(15_000, async () => {
     const auth = await requireAuth(request);
     if (!auth.ok) {
       logAuditEvent({
@@ -158,7 +160,8 @@ export async function POST(request: Request) {
       amount.data,
       currency.data.toUpperCase(),
       payment.id,
-      tenantId
+      tenantId,
+      { requestId, tenantId }
     );
 
     logAuditEvent({
@@ -175,6 +178,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       paymentUrl: nowPaymentsResponse.url,
       paymentId: payment.id,
+    });
     });
   } catch (error) {
     logAuditEvent({

@@ -1,3 +1,5 @@
+import { logSafe } from './logging';
+
 export type AuditOutcome = 'SUCCESS' | 'DENY' | 'ERROR';
 
 export interface AuditEvent {
@@ -16,8 +18,9 @@ export function logAuditEvent(event: AuditEvent) {
   const payload = {
     level: 'audit',
     ts: new Date().toISOString(),
+    correlationId: event.requestId,
     ...event,
   };
 
-  console.log(JSON.stringify(payload));
+  logSafe('info', 'audit_event', payload);
 }

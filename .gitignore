@@ -7,6 +7,7 @@ dist
 !.env.example
 *.log
 coverage
+.runtime/
 
 tsconfig.tsbuildinfo
 public/sw.js

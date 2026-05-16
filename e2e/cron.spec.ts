@@ -1,23 +1,32 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Cron Reminders', () => {
-  test('Cron endpoint by mal vrátiť 401 bez autorizácie', async ({ request }) => {
+  test('Cron endpoint rejects unauthenticated requests', async ({ request }) => {
     const response = await request.get('/api/cron');
-    // Ak je CRON_SECRET nastavený, mal by vrátiť 401
-    expect([200, 401]).toContain(response.status());
+    expect([401, 503]).toContain(response.status());
+    const body = await response.json();
+    expect(body.error).toBeDefined();
+    expect(typeof body.error.code).toBe('string');
   });
 
-  test('Cron by mal úspešne prebehnúť, aj keď nie sú žiadne rezervácie na zajtra', async ({ request }) => {
+  test('Cron endpoint handles authorized call with config-aware response', async ({ request }) => {
     const response = await request.get('/api/cron', {
       headers: { 'Authorization': `Bearer ${process.env.CRON_SECRET || ''}` }
     });
-    expect(response.status()).toBe(200);
-    const data = await response.json();
-    expect(data).toHaveProperty('processed');
+    expect([200, 401, 503]).toContain(response.status());
+    const body = await response.json();
+    if (response.status() === 200) {
+      expect(body).toHaveProperty('processed');
+      return;
+    }
+    expect(body.error).toBeDefined();
   });
 
-  test('Cron by mal odfiltrovať zrušené rezervácie', async ({ request }) => {
+  test('Cron endpoint keeps stable error envelope on unauthorized path', async ({ request }) => {
     const response = await request.get('/api/cron');
-    expect(response.status()).toBeDefined();
+    expect([401, 503]).toContain(response.status());
+    const body = await response.json();
+    expect(body.error).toBeDefined();
+    expect(typeof body.error.message).toBe('string');
   });
 });

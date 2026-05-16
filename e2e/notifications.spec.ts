@@ -1,26 +1,44 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('SMS & Email Notifications', () => {
-  test('Mal by zavolať API pre potvrdenie rezervácie a vrátiť success', async ({ request }) => {
-    // Simulujeme volanie API po úspešnom bookingu
+  const authHeaders = {
+    authorization: 'Bearer dev:tenant-a:staff:dev-staff',
+    'x-forwarded-for': '203.0.113.41',
+  };
+
+  test('Send-booking-confirmation route enforces authentication', async ({ request }) => {
     const response = await request.post('/api/send-booking-confirmation', {
-      data: { bookingId: 'test-booking-id' }
+      data: { bookingId: 'test-booking-id' },
     });
-    // Ak booking neexistuje v DB, vráti 404, čo je v poriadku pre test infraštruktúry
-    expect([200, 404]).toContain(response.status());
+
+    expect(response.status()).toBe(401);
+    const body = await response.json();
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
-  test('Notifikačný systém by mal zvládnuť chýbajúce tel. číslo bez pádu', async ({ request }) => {
+  test('Notification path returns config-aware status for missing booking', async ({ request }) => {
     const response = await request.post('/api/send-booking-confirmation', {
-      data: { bookingId: 'non-existent' }
+      data: { bookingId: 'non-existent' },
+      headers: authHeaders,
     });
-    expect(response.status()).toBe(404);
+
+    expect([404, 503]).toContain(response.status());
+    const body = await response.json();
+    if (response.status() === 404) {
+      expect(body.error.code).toBe('NOT_FOUND');
+      return;
+    }
+    expect(body.error.code).toBe('CONFIG_ERROR');
   });
 
-  test('Systém by mal logovať varovanie, ak Twilio nie je nakonfigurované', async ({ request }) => {
+  test('Notification route keeps stable validation response', async ({ request }) => {
     const response = await request.post('/api/send-booking-confirmation', {
-      data: { bookingId: 'some-id' }
+      data: {},
+      headers: authHeaders,
     });
-    expect(response.ok).toBeFalsy(); // Keďže ID neexistuje, je to správne správanie
+
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
   });
 });

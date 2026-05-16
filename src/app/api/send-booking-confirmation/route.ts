@@ -4,6 +4,7 @@ import { sendNotification } from '@/lib/notifications';
 import { sendToZapier } from '@/lib/zapier';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { withRequestTimeout } from '@/lib/security/timeout';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { parseJsonBody, requireString } from '@/lib/security/validation';
 import { getRequestId } from '@/lib/security/request-context';
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
   let tenantIdForAudit: string | undefined;
 
   try {
+    return await withRequestTimeout(15_000, async () => {
     const auth = await requireAuth(request);
     if (!auth.ok) {
       logAuditEvent({
@@ -109,7 +111,8 @@ export async function POST(request: Request) {
       booking.user?.phone || '',
       booking.user?.email || '',
       message,
-      'both'
+      'both',
+      { requestId }
     );
 
     await sendToZapier('booking.confirmed', {
@@ -118,6 +121,9 @@ export async function POST(request: Request) {
       service: booking.service.name,
       user: booking.user?.email,
       time: booking.startTime,
+    }, {
+      requestId,
+      tenantId: booking.tenantId,
     });
 
     logAuditEvent({
@@ -132,6 +138,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true });
+    });
   } catch (error) {
     logAuditEvent({
       action: 'booking.confirmation.send',

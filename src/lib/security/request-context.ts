@@ -6,3 +6,7 @@ export function getRequestId(request: Request) {
 
   return headerRequestId?.trim() || crypto.randomUUID();
 }
+
+export function getCorrelationId(request: Request) {
+  return getRequestId(request);
+}

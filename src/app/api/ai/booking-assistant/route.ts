@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getAIBookingResponse } from '@/lib/ai';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { unknownErrorResponse, errorResponse } from '@/lib/security/http';
+import { withRequestTimeout } from '@/lib/security/timeout';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { optionalString, parseJsonBody, requireIsoDate, requireString } from '@/lib/security/validation';
@@ -10,6 +11,7 @@ import { requireDatabaseUrl } from '@/lib/security/config';
 
 export async function POST(request: Request) {
   try {
+    return await withRequestTimeout(15_000, async () => {
     const auth = await requireAuth(request);
     if (!auth.ok) return auth.response;
 
@@ -80,6 +82,7 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json({ response });
+    });
   } catch (error) {
     return unknownErrorResponse(error);
   }

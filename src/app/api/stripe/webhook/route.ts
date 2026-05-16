@@ -2,15 +2,18 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { withRequestTimeout } from '@/lib/security/timeout';
 import { claimWebhookEventId } from '@/lib/security/webhook-idempotency';
 import { requireStripeWebhookSecret } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
+import { logSafe } from '@/lib/security/logging';
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
 
   try {
+    return await withRequestTimeout(15_000, async () => {
     const webhookSecret = requireStripeWebhookSecret();
 
     const body = await request.text();
@@ -74,7 +77,11 @@ export async function POST(request: Request) {
         await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
         break;
       default:
-        console.log(`Unhandled event type ${event.type}`);
+        logSafe('info', 'Unhandled Stripe webhook event type', {
+          requestId,
+          eventType: event.type,
+          eventId: event.id,
+        });
     }
 
     logAuditEvent({
@@ -88,6 +95,7 @@ export async function POST(request: Request) {
     });
 
     return Response.json({ received: true });
+    });
   } catch (error) {
     logAuditEvent({
       action: 'stripe.webhook.process',

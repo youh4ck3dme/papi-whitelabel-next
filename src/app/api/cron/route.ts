@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendNotification } from '@/lib/notifications';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { withRequestTimeout } from '@/lib/security/timeout';
 import { requireCronSecret, requireDatabaseUrl } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
@@ -10,6 +11,7 @@ export async function GET(request: Request) {
   const requestId = getRequestId(request);
 
   try {
+    return await withRequestTimeout(15_000, async () => {
     const cronSecret = requireCronSecret();
 
     const authHeader = request.headers.get('authorization');
@@ -53,7 +55,8 @@ export async function GET(request: Request) {
         booking.user?.phone || '',
         booking.user?.email || '',
         message,
-        'both'
+        'both',
+        { requestId }
       );
 
       logAuditEvent({
@@ -77,6 +80,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ processed: bookings.length });
+    });
   } catch (error) {
     logAuditEvent({
       action: 'cron.reminder.run',

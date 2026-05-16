@@ -5,9 +5,18 @@ const client = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
   : null;
 
-export const sendSMS = async (to: string, message: string) => {
+interface SMSContext {
+  requestId?: string;
+  tenantId?: string;
+}
+
+export const sendSMS = async (to: string, message: string, context: SMSContext = {}) => {
   if (!client) {
-    logSafe('info', 'Twilio not configured, SMS skipped', { to });
+    logSafe('info', 'Twilio not configured, SMS skipped', {
+      to,
+      requestId: context.requestId,
+      tenantId: context.tenantId,
+    });
     return null;
   }
 
@@ -19,8 +28,19 @@ export const sendSMS = async (to: string, message: string) => {
     });
     return response.sid;
   } catch (error) {
-    // Optional integration: never crash caller flow.
-    logSafe('warn', 'Twilio send failed, SMS skipped', { to, error: String(error) });
-    return null;
+    const status = typeof (error as { status?: number })?.status === 'number'
+      ? (error as { status: number }).status
+      : undefined;
+    const retryable = status === undefined || status === 429 || status >= 500;
+
+    const typedError = Object.assign(new Error('Twilio send failed'), {
+      cause: error,
+      retryable,
+      status,
+      code: (error as { code?: string })?.code,
+      requestId: context.requestId,
+      tenantId: context.tenantId,
+    });
+    throw typedError;
   }
 };

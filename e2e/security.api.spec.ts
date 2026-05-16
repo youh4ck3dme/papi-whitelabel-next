@@ -2,6 +2,23 @@ import { expect, test } from '@playwright/test';
 import Stripe from 'stripe';
 
 test.describe('API Security Guards', () => {
+  test('health endpoint reflects database reachability with stable shape', async ({ request }) => {
+    const response = await request.get('/api/health');
+
+    expect([200, 503]).toContain(response.status());
+    const body = await response.json();
+
+    if (response.status() === 200) {
+      expect(body.status).toBe('ok');
+      expect(body.database).toBe('up');
+      return;
+    }
+
+    expect(body.error).toBeDefined();
+    expect(typeof body.error.code).toBe('string');
+    expect(['CONFIG_ERROR', 'INTERNAL_ERROR']).toContain(body.error.code);
+  });
+
   test('returns 401 for mutating endpoints without auth', async ({ request }) => {
     const endpoints = [
       {

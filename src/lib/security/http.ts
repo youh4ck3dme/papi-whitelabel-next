@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ConfigError } from './config';
+import { RequestTimeoutError } from './timeout';
 
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
@@ -8,6 +9,7 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'RATE_LIMITED'
   | 'CONFIG_ERROR'
+  | 'REQUEST_TIMEOUT'
   | 'INTERNAL_ERROR';
 
 export interface ApiErrorBody {
@@ -38,6 +40,10 @@ export function errorResponse(
 export function unknownErrorResponse(error: unknown) {
   if (error instanceof ConfigError) {
     return errorResponse(503, 'CONFIG_ERROR', error.message);
+  }
+
+  if (error instanceof RequestTimeoutError) {
+    return errorResponse(504, 'REQUEST_TIMEOUT', error.message);
   }
 
   const isProd = process.env.NODE_ENV === 'production';

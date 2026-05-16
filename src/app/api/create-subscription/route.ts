@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getStripeClient } from '@/lib/stripe';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
+import { withRequestTimeout } from '@/lib/security/timeout';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { optionalString, parseJsonBody, requireEnum, requireString } from '@/lib/security/validation';
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
   let tenantIdForAudit: string | undefined;
 
   try {
+    return await withRequestTimeout(15_000, async () => {
     const auth = await requireAuth(request);
     if (!auth.ok) {
       logAuditEvent({
@@ -148,6 +150,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ url: session.url });
+    });
   } catch (error) {
     logAuditEvent({
       action: 'subscription.create',
