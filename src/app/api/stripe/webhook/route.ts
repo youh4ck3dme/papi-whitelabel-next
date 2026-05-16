@@ -8,6 +8,7 @@ import { requireStripeWebhookSecret } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
 import { logSafe } from '@/lib/security/logging';
+import { canTransitionBookingStatus, canTransitionPaymentStatus } from '@/lib/security/status-transitions';
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
@@ -71,10 +72,10 @@ export async function POST(request: Request) {
         await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
         break;
       case 'payment_intent.succeeded':
-        await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent);
+        await handlePaymentSuccess(event.data.object as Stripe.PaymentIntent, requestId);
         break;
       case 'payment_intent.payment_failed':
-        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
+        await handlePaymentFailed(event.data.object as Stripe.PaymentIntent, requestId);
         break;
       default:
         logSafe('info', 'Unhandled Stripe webhook event type', {
@@ -147,43 +148,76 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   });
 }
 
-async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent, requestId: string) {
   const paymentId = paymentIntent.metadata.paymentId;
   const bookingId = paymentIntent.metadata.bookingId;
 
   if (paymentId) {
-    await prisma.payment.updateMany({
-      where: {
-        id: paymentId,
-        NOT: { status: 'COMPLETED' },
-      },
-      data: {
-        status: 'COMPLETED',
-        transactionId: paymentIntent.id,
-      },
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, status: true },
     });
+
+    if (payment && canTransitionPaymentStatus(payment.status, 'COMPLETED')) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'COMPLETED',
+          transactionId: paymentIntent.id,
+        },
+      });
+    } else if (payment) {
+      logSafe('warn', 'Blocked illegal payment status transition', {
+        requestId,
+        paymentId: payment.id,
+        currentStatus: payment.status,
+        nextStatus: 'COMPLETED',
+      });
+    }
   }
 
   if (bookingId) {
-    await prisma.booking.updateMany({
-      where: {
-        id: bookingId,
-        NOT: { status: 'CONFIRMED' },
-      },
-      data: { status: 'CONFIRMED' },
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, status: true },
     });
+
+    if (booking && canTransitionBookingStatus(booking.status, 'CONFIRMED')) {
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { status: 'CONFIRMED' },
+      });
+    } else if (booking) {
+      logSafe('warn', 'Blocked illegal booking status transition', {
+        requestId,
+        bookingId: booking.id,
+        currentStatus: booking.status,
+        nextStatus: 'CONFIRMED',
+      });
+    }
   }
 }
 
-async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
+async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent, requestId: string) {
   const paymentId = paymentIntent.metadata.paymentId;
   if (paymentId) {
-    await prisma.payment.updateMany({
-      where: {
-        id: paymentId,
-        NOT: { status: 'COMPLETED' },
-      },
-      data: { status: 'FAILED' },
+    const payment = await prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, status: true },
     });
+
+    if (payment && canTransitionPaymentStatus(payment.status, 'FAILED')) {
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { status: 'FAILED' },
+      });
+    } else if (payment) {
+      logSafe('warn', 'Blocked illegal payment status transition', {
+        requestId,
+        paymentId: payment.id,
+        currentStatus: payment.status,
+        nextStatus: 'FAILED',
+      });
+    }
   }
 }
