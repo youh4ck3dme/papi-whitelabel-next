@@ -48,3 +48,4 @@ For database-impacting releases, link:
 
 - `docs/DB_INDEX_REVIEW.md`
 - `docs/DB_MIGRATION_ROLLBACK_PLAYBOOK.md`
+- `docs/DB_MIGRATION_REHEARSAL_EVIDENCE.md`

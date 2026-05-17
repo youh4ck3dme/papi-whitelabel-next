@@ -105,6 +105,9 @@ Required for `P0-024` completion:
 - execution time and observed errors
 - verification result
 
+Template: `docs/DB_MIGRATION_REHEARSAL_TEMPLATE.md`  
+Evidence log: `docs/DB_MIGRATION_REHEARSAL_EVIDENCE.md`
+
 Current status: **PENDING_STAGING_REHEARSAL**
 
 ## Production Guardrails
