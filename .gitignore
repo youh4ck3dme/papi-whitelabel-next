@@ -7,3 +7,10 @@ dist
 !.env.example
 *.log
 coverage
+.runtime/
+
+tsconfig.tsbuildinfo
+public/sw.js
+public/workbox-*.js
+playwright-report/
+test-results/

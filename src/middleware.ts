@@ -10,6 +10,21 @@ const ALLOWED_DOMAINS = [
 export async function middleware(request: NextRequest) {
   const hostname = request.headers.get('host');
   const path = request.nextUrl.pathname;
+  const correlationId =
+    request.headers.get('x-request-id') ||
+    request.headers.get('x-correlation-id') ||
+    request.headers.get('x-vercel-id') ||
+    crypto.randomUUID();
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-request-id', correlationId);
+  requestHeaders.set('x-correlation-id', correlationId);
+
+  const withCorrelationHeaders = (response: NextResponse) => {
+    response.headers.set('x-request-id', correlationId);
+    response.headers.set('x-correlation-id', correlationId);
+    return response;
+  };
 
   // Preskoč API a statické súbory
   if (
@@ -18,14 +33,24 @@ export async function middleware(request: NextRequest) {
     path.startsWith('/favicon.ico') ||
     path.startsWith('/icons/')
   ) {
-    return NextResponse.next();
+    return withCorrelationHeaders(
+      NextResponse.next({
+        request: {
+          headers: requestHeaders,
+        },
+      })
+    );
   }
 
   // Localhost development
   if (hostname?.includes('localhost')) {
-    const response = NextResponse.next();
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
     response.cookies.set('tenantId', 'default-tenant-id');
-    return response;
+    return withCorrelationHeaders(response);
   }
 
   // Over, či je doména povolená
@@ -34,7 +59,9 @@ export async function middleware(request: NextRequest) {
   );
 
   if (!isAllowedDomain) {
-    return NextResponse.redirect(new URL('https://whitelabeldesign.com/404', request.url));
+    return withCorrelationHeaders(
+      NextResponse.redirect(new URL('https://whitelabeldesign.com/404', request.url))
+    );
   }
 
   // Subdoména (napr. client.whitelabeldesign.com)
@@ -43,21 +70,35 @@ export async function middleware(request: NextRequest) {
     
     // POZNÁMKA: V Edge Runtime nemôžeme priamo volať Prisma (pokiaľ nepoužívaš Accelerate).
     // Tu zatiaľ nastavujeme subdoménu do cookies, aby ju vedeli prečítať Server Components.
-    const response = NextResponse.next();
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
     response.cookies.set('tenantSubdomain', subdomain);
-    return response;
+    return withCorrelationHeaders(response);
   }
 
   // Custom domain (napr. booking.theirdomain.com)
   if (hostname && !hostname.includes('whitelabeldesign.com')) {
-    const response = NextResponse.next();
+    const response = NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
     response.cookies.set('tenantCustomDomain', hostname);
-    return response;
+    return withCorrelationHeaders(response);
   }
 
-  return NextResponse.next();
+  return withCorrelationHeaders(
+    NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    })
+  );
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|icons/).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icons/).*)'],
 };

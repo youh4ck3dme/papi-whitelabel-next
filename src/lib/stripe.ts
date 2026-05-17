@@ -1,5 +1,18 @@
 import Stripe from 'stripe';
+import { requireStripeSecretKey } from '@/lib/security/config';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-04-22.dahlia' as any, // Using the version required by the installed SDK
-});
+let cachedStripeClient: Stripe | null = null;
+let cachedStripeSecret: string | null = null;
+
+export function getStripeClient() {
+  const stripeSecretKey = requireStripeSecretKey();
+
+  if (!cachedStripeClient || cachedStripeSecret !== stripeSecretKey) {
+    cachedStripeClient = new Stripe(stripeSecretKey, {
+      apiVersion: '2026-04-22.dahlia' as any,
+    });
+    cachedStripeSecret = stripeSecretKey;
+  }
+
+  return cachedStripeClient;
+}

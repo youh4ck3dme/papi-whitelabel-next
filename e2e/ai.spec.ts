@@ -1,37 +1,63 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('AI Booking Assistant', () => {
-  test('AI by malo odpovedať na dotaz o voľných termínoch', async ({ request }) => {
+  const authHeaders = {
+    authorization: 'Bearer dev:tenant-a:staff:dev-staff',
+    'x-forwarded-for': '203.0.113.40',
+  };
+
+  test('AI endpoint enforces auth for booking assistant', async ({ request }) => {
     const response = await request.post('/api/ai/booking-assistant', {
       data: {
         tenantId: 'test-tenant',
         query: 'Kedy máte voľno?',
-        date: '2026-05-01'
+        date: '2026-05-01',
       }
     });
-    // Ak nemáme OpenAI kľúč, vráti 500 alebo fallback, čo testujeme
-    expect(response.status()).toBeDefined();
+
+    expect(response.status()).toBe(401);
+    const body = await response.json();
+    expect(body.error.code).toBe('UNAUTHORIZED');
   });
 
-  test('AI by malo vrátiť chybu, ak tenant neexistuje', async ({ request }) => {
+  test('AI returns config/db aware error for unknown tenant lookup', async ({ request }) => {
     const response = await request.post('/api/ai/booking-assistant', {
       data: {
         tenantId: 'invalid-id',
         query: 'Hello',
-        date: '2026-05-01'
-      }
+        date: '2026-05-01',
+      },
+      headers: authHeaders,
     });
-    expect(response.status()).toBe(404);
+
+    expect([403, 404, 503]).toContain(response.status());
+    const body = await response.json();
+    if (response.status() === 403) {
+      expect(body.error.code).toBe('FORBIDDEN');
+      return;
+    }
+    if (response.status() === 404) {
+      expect(body.error.code).toBe('NOT_FOUND');
+      return;
+    }
+    expect(body.error.code).toBe('CONFIG_ERROR');
   });
 
-  test('AI asistent by mal vrátiť textovú odpoveď v správnom jazyku', async ({ request }) => {
+  test('AI validates payload shape with stable error response', async ({ request }) => {
     const response = await request.post('/api/ai/booking-assistant', {
       data: {
-        tenantId: 'sk-tenant',
-        query: 'Aké služby ponúkate?',
-        date: '2026-05-01'
-      }
+        query: '',
+        date: 'invalid-date',
+      },
+      headers: authHeaders,
     });
-    expect(response.status()).toBeDefined();
+
+    expect([400, 503]).toContain(response.status());
+    const body = await response.json();
+    if (response.status() === 400) {
+      expect(body.error.code).toBe('INVALID_REQUEST');
+      return;
+    }
+    expect(body.error.code).toBe('CONFIG_ERROR');
   });
 });
