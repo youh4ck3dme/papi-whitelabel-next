@@ -14,8 +14,10 @@ test.describe('API Error Contract', () => {
   test('mutating endpoints return UNAUTHORIZED with stable envelope when auth missing', async ({ request }) => {
     const endpoints = [
       '/api/bookings',
+      '/api/bookings/status',
       '/api/create-payment',
       '/api/create-subscription',
+      '/api/payments/status',
       '/api/send-booking-confirmation',
       '/api/ai/booking-assistant',
     ];

@@ -31,6 +31,22 @@ test.describe('API Security Guards', () => {
         },
       },
       {
+        path: '/api/bookings/status',
+        data: {
+          tenantId: 'tenant-a',
+          bookingId: 'booking-1',
+          status: 'CONFIRMED',
+        },
+      },
+      {
+        path: '/api/payments/status',
+        data: {
+          tenantId: 'tenant-a',
+          paymentId: 'payment-1',
+          status: 'FAILED',
+        },
+      },
+      {
         path: '/api/create-payment',
         data: {
           tenantId: 'tenant-a',
@@ -109,6 +125,23 @@ test.describe('API Security Guards', () => {
       headers: {
         authorization: 'Bearer dev:tenant-a:admin:dev-admin',
         'x-forwarded-for': '203.0.113.16',
+      },
+    });
+
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  test('returns 400 for invalid payment status payload', async ({ request }) => {
+    const response = await request.post('/api/payments/status', {
+      data: {
+        paymentId: 'payment-1',
+        status: 'UNKNOWN_STATUS',
+      },
+      headers: {
+        authorization: 'Bearer dev:tenant-a:admin:dev-admin',
+        'x-forwarded-for': '203.0.113.17',
       },
     });
 
