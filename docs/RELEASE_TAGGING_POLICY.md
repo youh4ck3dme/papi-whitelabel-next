@@ -43,3 +43,8 @@ git push origin vX.Y.Z
 - Security-relevant changes.
 - Database or env variable impact.
 - Rollback instructions reference.
+
+For database-impacting releases, link:
+
+- `docs/DB_INDEX_REVIEW.md`
+- `docs/DB_MIGRATION_ROLLBACK_PLAYBOOK.md`

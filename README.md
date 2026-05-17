@@ -81,6 +81,7 @@ npm run test:security
 - Branch protection baseline: `docs/BRANCH_PROTECTION.md`
 - Release tagging process: `docs/RELEASE_TAGGING_POLICY.md`
 - Incident rollback steps: `docs/ROLLBACK_CHECKLIST.md`
+- DB migration rollback playbook: `docs/DB_MIGRATION_ROLLBACK_PLAYBOOK.md`
 
 ## Security notes
 

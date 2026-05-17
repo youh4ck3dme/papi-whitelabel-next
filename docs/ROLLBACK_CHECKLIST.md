@@ -2,6 +2,8 @@
 
 Use this checklist when a production deployment causes regressions.
 
+Reference: `docs/DB_MIGRATION_ROLLBACK_PLAYBOOK.md` for schema-specific rollback flow.
+
 ## Trigger Conditions
 
 - Elevated 5xx rates on booking or billing endpoints.
@@ -21,7 +23,8 @@ Use this checklist when a production deployment causes regressions.
 1. Checkout release branch from target tag.
 2. Redeploy previous stable artifact.
 3. Verify service health route and core flows.
-4. Re-run security contract smoke tests.
+4. If migration-related, execute DB rollback playbook.
+5. Re-run security contract smoke tests.
 
 ## Verification Commands
 
