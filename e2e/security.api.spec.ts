@@ -245,7 +245,7 @@ test.describe('API Security Guards', () => {
   });
 
   test('marks duplicate stripe webhook event as duplicate', async ({ request }) => {
-    const secret = 'whsec_test_local';
+    const secret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_local';
 
     const payloadObject = {
       id: 'evt_test_duplicate_guard',
