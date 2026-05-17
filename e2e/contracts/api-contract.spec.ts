@@ -13,6 +13,7 @@ async function expectErrorEnvelope(response: { status(): number; json(): Promise
 test.describe('API Error Contract', () => {
   test('mutating endpoints return UNAUTHORIZED with stable envelope when auth missing', async ({ request }) => {
     const endpoints = [
+      '/api/bookings',
       '/api/create-payment',
       '/api/create-subscription',
       '/api/send-booking-confirmation',

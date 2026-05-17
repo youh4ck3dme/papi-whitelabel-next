@@ -6,6 +6,7 @@ export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'INVALID_REQUEST'
+  | 'CONFLICT'
   | 'NOT_FOUND'
   | 'RATE_LIMITED'
   | 'CONFIG_ERROR'

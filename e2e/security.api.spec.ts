@@ -22,6 +22,15 @@ test.describe('API Security Guards', () => {
   test('returns 401 for mutating endpoints without auth', async ({ request }) => {
     const endpoints = [
       {
+        path: '/api/bookings',
+        data: {
+          tenantId: 'tenant-a',
+          serviceId: 'service-1',
+          startTime: new Date().toISOString(),
+          endTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        },
+      },
+      {
         path: '/api/create-payment',
         data: {
           tenantId: 'tenant-a',
@@ -86,6 +95,26 @@ test.describe('API Security Guards', () => {
     const body = await response.json();
     expect(body.error.code).toBe('INVALID_REQUEST');
     expect(typeof body.error.message).toBe('string');
+  });
+
+  test('returns 400 for invalid booking time window', async ({ request }) => {
+    const nowIso = new Date().toISOString();
+    const response = await request.post('/api/bookings', {
+      data: {
+        tenantId: 'tenant-a',
+        serviceId: 'service-1',
+        startTime: nowIso,
+        endTime: nowIso,
+      },
+      headers: {
+        authorization: 'Bearer dev:tenant-a:admin:dev-admin',
+        'x-forwarded-for': '203.0.113.16',
+      },
+    });
+
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
   });
 
   test('returns 403 when tenant context mismatches token tenant', async ({ request }) => {
