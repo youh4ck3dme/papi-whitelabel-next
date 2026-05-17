@@ -1,19 +1,19 @@
-import { NextResponse } from 'next/server';
 import { BookingStatus } from '@prisma/client';
+import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole } from '@/lib/security/auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { enforceTenantContext } from '@/lib/security/tenant';
 import { errorResponse, unknownErrorResponse } from '@/lib/security/http';
-import { optionalString, parseJsonBody, requireEnum, requireString } from '@/lib/security/validation';
+import { optionalString, parseJsonBody, requireIsoDate, requireString } from '@/lib/security/validation';
 import { requireDatabaseUrl } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
 import { withRequestTimeout } from '@/lib/security/timeout';
-import { canTransitionBookingStatus } from '@/lib/security/status-transitions';
 
-const BOOKING_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED', 'NO_SHOW'];
-const MIN_CANCEL_LEAD_MINUTES = 15;
+const RESCHEDULABLE_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED'];
+const BLOCKING_BOOKING_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED'];
+const MIN_RESCHEDULE_LEAD_MINUTES = 15;
 
 export async function POST(request: Request) {
   const requestId = getRequestId(request);
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       const auth = await requireAuth(request);
       if (!auth.ok) {
         logAuditEvent({
-          action: 'booking.status.update',
+          action: 'booking.reschedule',
           outcome: 'DENY',
           requestId,
           reason: 'unauthenticated',
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       const roleCheck = requireRole(auth.context, ['owner', 'admin', 'staff']);
       if (!roleCheck.ok) {
         logAuditEvent({
-          action: 'booking.status.update',
+          action: 'booking.reschedule',
           outcome: 'DENY',
           requestId,
           actorId,
@@ -54,14 +54,14 @@ export async function POST(request: Request) {
 
       const rateLimit = enforceRateLimit({
         request,
-        bucket: 'booking:update-status',
+        bucket: 'booking:reschedule',
         identity: `${auth.context.tenantId}:${auth.context.userId}`,
         limit: 30,
         windowMs: 60_000,
       });
       if (!rateLimit.ok) {
         logAuditEvent({
-          action: 'booking.status.update',
+          action: 'booking.reschedule',
           outcome: 'DENY',
           requestId,
           actorId,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       const tenantCheck = enforceTenantContext(tenantIdInput.data, auth.context);
       if (!tenantCheck.ok) {
         logAuditEvent({
-          action: 'booking.status.update',
+          action: 'booking.reschedule',
           outcome: 'DENY',
           requestId,
           actorId,
@@ -95,14 +95,36 @@ export async function POST(request: Request) {
       const bookingId = requireString(parsedBody.data.bookingId, 'bookingId');
       if (!bookingId.ok) return bookingId.response;
 
-      const nextStatus = requireEnum(parsedBody.data.status, 'status', BOOKING_STATUSES);
-      if (!nextStatus.ok) return nextStatus.response;
+      const startTime = requireIsoDate(parsedBody.data.startTime, 'startTime');
+      if (!startTime.ok) return startTime.response;
+
+      const endTime = requireIsoDate(parsedBody.data.endTime, 'endTime');
+      if (!endTime.ok) return endTime.response;
+
+      const newStart = startTime.data;
+      const newEnd = endTime.data;
+      if (newStart >= newEnd) {
+        return errorResponse(400, 'INVALID_REQUEST', 'startTime must be before endTime');
+      }
+
+      const now = Date.now();
+      const minutesUntilNewStart = Math.floor((newStart.getTime() - now) / 60_000);
+      if (minutesUntilNewStart < MIN_RESCHEDULE_LEAD_MINUTES) {
+        return errorResponse(409, 'CONFLICT', 'Reschedule window is locked for near-term slots');
+      }
 
       requireDatabaseUrl();
 
       const booking = await prisma.booking.findUnique({
         where: { id: bookingId.data },
-        select: { id: true, tenantId: true, status: true, startTime: true },
+        select: {
+          id: true,
+          tenantId: true,
+          serviceId: true,
+          status: true,
+          startTime: true,
+          endTime: true,
+        },
       });
       if (!booking) {
         return errorResponse(404, 'NOT_FOUND', 'Booking not found');
@@ -110,48 +132,56 @@ export async function POST(request: Request) {
       if (booking.tenantId !== tenantCheck.tenantId) {
         return errorResponse(403, 'FORBIDDEN', 'Booking tenant does not match authenticated tenant');
       }
+      if (!RESCHEDULABLE_STATUSES.includes(booking.status)) {
+        return errorResponse(409, 'CONFLICT', `Booking in status ${booking.status} cannot be rescheduled`);
+      }
 
-      if (!canTransitionBookingStatus(booking.status, nextStatus.data)) {
+      const conflictingBooking = await prisma.booking.findFirst({
+        where: {
+          id: { not: booking.id },
+          tenantId: booking.tenantId,
+          serviceId: booking.serviceId,
+          status: { in: BLOCKING_BOOKING_STATUSES },
+          startTime: { lt: newEnd },
+          endTime: { gt: newStart },
+        },
+        select: { id: true },
+      });
+
+      if (conflictingBooking) {
         logAuditEvent({
-          action: 'booking.status.update',
+          action: 'booking.reschedule',
           outcome: 'DENY',
           requestId,
           actorId,
           actorRole,
           tenantId: booking.tenantId,
           targetType: 'booking',
-          targetId: booking.id,
-          reason: `illegal_transition_${booking.status}_to_${nextStatus.data}`,
+          targetId: conflictingBooking.id,
+          reason: 'conflict_existing_slot',
         });
-        return errorResponse(409, 'CONFLICT', `Illegal booking transition: ${booking.status} -> ${nextStatus.data}`);
-      }
-
-      if (booking.status === 'CONFIRMED' && nextStatus.data === 'CANCELLED') {
-        const minutesToStart = Math.floor((booking.startTime.getTime() - Date.now()) / 60_000);
-        if (minutesToStart < MIN_CANCEL_LEAD_MINUTES) {
-          logAuditEvent({
-            action: 'booking.status.update',
-            outcome: 'DENY',
-            requestId,
-            actorId,
-            actorRole,
-            tenantId: booking.tenantId,
-            targetType: 'booking',
-            targetId: booking.id,
-            reason: 'cancellation_window_locked',
-          });
-          return errorResponse(409, 'CONFLICT', 'Cancellation window is locked for this booking');
-        }
+        return errorResponse(409, 'CONFLICT', 'Booking time slot is not available');
       }
 
       const updated = await prisma.booking.update({
         where: { id: booking.id },
-        data: { status: nextStatus.data },
-        select: { id: true, tenantId: true, status: true, updatedAt: true },
+        data: {
+          startTime: newStart,
+          endTime: newEnd,
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          serviceId: true,
+          status: true,
+          startTime: true,
+          endTime: true,
+          updatedAt: true,
+        },
       });
 
       logAuditEvent({
-        action: 'booking.status.update',
+        action: 'booking.reschedule',
         outcome: 'SUCCESS',
         requestId,
         actorId,
@@ -165,7 +195,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     logAuditEvent({
-      action: 'booking.status.update',
+      action: 'booking.reschedule',
       outcome: 'ERROR',
       requestId,
       actorId,

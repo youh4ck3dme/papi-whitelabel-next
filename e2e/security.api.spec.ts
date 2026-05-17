@@ -39,6 +39,15 @@ test.describe('API Security Guards', () => {
         },
       },
       {
+        path: '/api/bookings/reschedule',
+        data: {
+          tenantId: 'tenant-a',
+          bookingId: 'booking-1',
+          startTime: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+          endTime: new Date(Date.now() + 90 * 60 * 1000).toISOString(),
+        },
+      },
+      {
         path: '/api/payments/status',
         data: {
           tenantId: 'tenant-a',
@@ -142,6 +151,25 @@ test.describe('API Security Guards', () => {
       headers: {
         authorization: 'Bearer dev:tenant-a:admin:dev-admin',
         'x-forwarded-for': '203.0.113.17',
+      },
+    });
+
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe('INVALID_REQUEST');
+  });
+
+  test('returns 400 for invalid reschedule payload window', async ({ request }) => {
+    const nowIso = new Date().toISOString();
+    const response = await request.post('/api/bookings/reschedule', {
+      data: {
+        bookingId: 'booking-1',
+        startTime: nowIso,
+        endTime: nowIso,
+      },
+      headers: {
+        authorization: 'Bearer dev:tenant-a:admin:dev-admin',
+        'x-forwarded-for': '203.0.113.18',
       },
     });
 
