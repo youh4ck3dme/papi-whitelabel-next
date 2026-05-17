@@ -61,5 +61,6 @@ jobs:
 
       - name: Run security and API contract tests
         env:
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
           STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
         run: npx playwright test e2e/security.api.spec.ts e2e/contracts/api-contract.spec.ts --project=chromium
