@@ -9,31 +9,31 @@ datasource db {
 
 // ========== TENANT & USER ==========
 model Tenant {
-  id            String    @id @default(cuid())
-  name          String
-  subdomain     String    @unique
-  customDomain  String?
-  logo          String?   
-  favicon       String?   
-  primaryColor  String?   @default("#3b82f6")
-  secondaryColor String? @default("#10b981")
-  language      String    @default("en")
-  stripeCustomerId String? 
-  nowPaymentsApiKey String? 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  users         User[]
-  bookings      Booking[]
-  services      Service[]
-  payments      Payment[]
-  subscriptions Subscription[]
-  apiKeys       ApiKey[]
+  id                String         @id @default(cuid())
+  name              String
+  subdomain         String         @unique
+  customDomain      String?
+  logo              String?
+  favicon           String?
+  primaryColor      String?        @default("#3b82f6")
+  secondaryColor    String?        @default("#10b981")
+  language          String         @default("en")
+  stripeCustomerId  String?
+  nowPaymentsApiKey String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  users             User[]
+  bookings          Booking[]
+  services          Service[]
+  payments          Payment[]
+  subscriptions     Subscription[]
+  apiKeys           ApiKey[]
 }
 
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  password      String?   
+  password      String?
   firstName     String?
   lastName      String?
   phone         String?
@@ -41,7 +41,7 @@ model User {
   tenant        Tenant    @relation(fields: [tenantId], references: [id])
   role          Role      @default(USER)
   emailVerified DateTime?
-  image         String?   
+  image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   bookings      Booking[]
@@ -56,36 +56,42 @@ enum Role {
 
 // ========== BOOKING SYSTEM ==========
 model Service {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
   name        String
   description String?
-  duration    Int      
-  price       Float    
+  duration    Int
+  price       Float
   category    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   bookings    Booking[]
+
+  @@index([tenantId, isActive])
 }
 
 model Booking {
-  id          String        @id @default(cuid())
-  tenantId    String
-  tenant      Tenant        @relation(fields: [tenantId], references: [id])
-  userId      String?
-  user        User?         @relation(fields: [userId], references: [id])
-  serviceId   String
-  service     Service       @relation(fields: [serviceId], references: [id])
-  startTime   DateTime
-  endTime     DateTime
-  status      BookingStatus @default(PENDING)
-  notes       String?
-  payment     Payment?      @relation(name: "BookingPayment") // Payment side now owns the relation
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id        String        @id @default(cuid())
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id])
+  serviceId String
+  service   Service       @relation(fields: [serviceId], references: [id])
+  startTime DateTime
+  endTime   DateTime
+  status    BookingStatus @default(PENDING)
+  notes     String?
+  payment   Payment?      @relation(name: "BookingPayment") // Payment side now owns the relation
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
   @@index([tenantId, startTime])
+  @@index([status, startTime])
+  @@index([tenantId, serviceId, status, startTime])
+  @@index([tenantId, serviceId, status, endTime])
 }
 
 enum BookingStatus {
@@ -98,21 +104,23 @@ enum BookingStatus {
 
 // ========== PAYMENTS ==========
 model Payment {
-  id          String           @id @default(cuid())
-  tenantId    String
-  tenant      Tenant           @relation(fields: [tenantId], references: [id])
-  userId      String?
-  user        User?            @relation(fields: [userId], references: [id])
-  bookingId   String?          @unique // Payment holds the link to booking
-  booking     Booking?         @relation(fields: [bookingId], references: [id], name: "BookingPayment")
-  amount      Float
-  currency    String           @default("USD")
-  method      PaymentMethod
-  status      PaymentStatus    @default(PENDING)
-  transactionId String?        
-  metadata    Json?            
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id            String        @id @default(cuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id])
+  bookingId     String?       @unique // Payment holds the link to booking
+  booking       Booking?      @relation(fields: [bookingId], references: [id], name: "BookingPayment")
+  amount        Float
+  currency      String        @default("USD")
+  method        PaymentMethod
+  status        PaymentStatus @default(PENDING)
+  transactionId String?
+  metadata      Json?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([tenantId, status, createdAt])
 }
 
 enum PaymentMethod {
@@ -131,16 +139,18 @@ enum PaymentStatus {
 
 // ========== SUBSCRIPTIONS (Stripe) ==========
 model Subscription {
-  id          String              @id @default(cuid())
-  tenantId    String
-  tenant      Tenant              @relation(fields: [tenantId], references: [id])
-  stripeId    String              @unique 
-  plan        Plan
-  status      SubscriptionStatus @default(ACTIVE)
-  currentPeriodEnd DateTime
-  cancelAtPeriodEnd Boolean       @default(false)
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id                String             @id @default(cuid())
+  tenantId          String
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  stripeId          String             @unique
+  plan              Plan
+  status            SubscriptionStatus @default(ACTIVE)
+  currentPeriodEnd  DateTime
+  cancelAtPeriodEnd Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([tenantId, status])
 }
 
 enum Plan {
@@ -163,9 +173,9 @@ model ApiKey {
   id          String   @id @default(cuid())
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  key        String   @unique
+  key         String   @unique
   name        String
-  permissions String[] 
+  permissions String[]
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
