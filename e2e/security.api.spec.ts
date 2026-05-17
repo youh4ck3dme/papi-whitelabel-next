@@ -4,6 +4,9 @@ import Stripe from 'stripe';
 test.describe('API Security Guards', () => {
   test('health endpoint reflects database reachability with stable shape', async ({ request }) => {
     const response = await request.get('/api/health');
+    const requestIdHeader = response.headers()['x-request-id'];
+    expect(typeof requestIdHeader).toBe('string');
+    expect(requestIdHeader.length).toBeGreaterThan(8);
 
     expect([200, 503]).toContain(response.status());
     const body = await response.json();
