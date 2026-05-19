@@ -10,6 +10,7 @@ import { requireDatabaseUrl } from '@/lib/security/config';
 import { getRequestId } from '@/lib/security/request-context';
 import { logAuditEvent } from '@/lib/security/audit-log';
 import { withRequestTimeout } from '@/lib/security/timeout';
+import { isBookingOverlapConstraintError } from '@/lib/security/prisma-errors';
 
 const BLOCKING_BOOKING_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED'];
 
@@ -196,6 +197,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ booking }, { status: 201 });
     });
   } catch (error) {
+    if (isBookingOverlapConstraintError(error)) {
+      return errorResponse(409, 'CONFLICT', 'Booking time slot is not available');
+    }
+
     logAuditEvent({
       action: 'booking.create',
       outcome: 'ERROR',
