@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { brandConfig } from "@/config/brand";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 
 export const metadata: Metadata = {
   title: {
@@ -32,7 +33,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="sk">
-      <body>{children}</body>
+      <body>
+        <OfflineIndicator />
+        {children}
+      </body>
     </html>
   );
 }

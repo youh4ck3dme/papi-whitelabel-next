@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/PageShell";
+import { BookingServicesPanel } from "@/components/BookingServicesPanel";
 import { bookingRepository } from "@/lib/data/repository";
-import { formatPrice } from "@/lib/format";
 
 export default async function BookingPage() {
   const [services, employees] = await Promise.all([
@@ -20,22 +20,7 @@ export default async function BookingPage() {
       </section>
 
       <section className="booking-layout">
-        <div className="card stack">
-          <h2>Služby</h2>
-          <div className="list">
-            {services.map((service) => (
-              <div className="list-row" key={service.id}>
-                <div>
-                  <strong>{service.name}</strong>
-                  <p className="muted">
-                    {service.category} · {service.durationMinutes} min
-                  </p>
-                </div>
-                <strong>{formatPrice(service.priceCents)}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
+        <BookingServicesPanel services={services} />
 
         <aside className="card soft stack">
           <h2>Tím</h2>
